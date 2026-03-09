@@ -74,7 +74,7 @@ Pass via `--config`:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `model` | string | `gemini-2.5-pro` | Model to use |
+| `model` | string | _(none)_ | Model override (omit to use gemini CLI default) |
 | `dangerously_skip_permissions` | boolean | `true` | Auto-approve all tool calls (`--yolo`). Set to `false` to require approval. |
 
 ### Environment variables
