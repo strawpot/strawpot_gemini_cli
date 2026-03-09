@@ -18,8 +18,7 @@ metadata:
     params:
       model:
         type: string
-        default: gemini-2.5-pro
-        description: Model to use for Gemini CLI
+        description: Model override (omit to use gemini CLI default)
       dangerously_skip_permissions:
         type: boolean
         default: true
