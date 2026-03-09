@@ -2,7 +2,6 @@
 name: strawpot-gemini
 description: Gemini CLI agent
 metadata:
-  version: "0.1.0"
   strawpot:
     bin:
       macos: strawpot_gemini
