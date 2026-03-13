@@ -10,6 +10,8 @@ metadata:
       macos: curl -fsSL https://raw.githubusercontent.com/strawpot/strawpot_gemini_cli/main/strawpot_gemini/install.sh | sh
       linux: curl -fsSL https://raw.githubusercontent.com/strawpot/strawpot_gemini_cli/main/strawpot_gemini/install.sh | sh
     tools:
+      npm:
+        description: Node.js package manager (https://nodejs.org)
       gemini:
         description: Gemini CLI
         install:
