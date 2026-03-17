@@ -5,6 +5,7 @@
 *.so
 *.dylib
 gemini/strawpot_gemini
+gemini/wrapper/wrapper
 
 # Test binary
 *.test
