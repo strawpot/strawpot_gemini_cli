@@ -39,31 +39,41 @@ func main() {
 // ---------------------------------------------------------------------------
 
 func cmdSetup() {
+	// 1. Check if gemini CLI exists; if not, try to install it.
 	geminiPath, err := exec.LookPath("gemini")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error: gemini CLI not found on PATH.")
-		fmt.Fprintln(os.Stderr, "Install it with: npm install -g @google/gemini-cli")
-		os.Exit(1)
-	}
-
-	fmt.Fprintln(os.Stderr, "Starting Gemini CLI login...")
-	fmt.Fprintln(os.Stderr, "If a browser window does not open, copy the URL from the output below.")
-	fmt.Fprintln(os.Stderr)
-
-	cmd := exec.Command(geminiPath, "auth", "login")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	// Inherit full environment so DISPLAY/WAYLAND_DISPLAY are available
-	// for browser opening on Linux.
-	cmd.Env = os.Environ()
-
-	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exitErr.ExitCode())
+		fmt.Fprintln(os.Stderr, "Gemini CLI not found. Installing via npm...")
+		install := exec.Command("npm", "install", "-g", "@google/gemini-cli")
+		install.Stdin = os.Stdin
+		install.Stdout = os.Stdout
+		install.Stderr = os.Stderr
+		install.Env = os.Environ()
+		if installErr := install.Run(); installErr != nil {
+			fmt.Fprintln(os.Stderr, "Failed to install Gemini CLI.")
+			fmt.Fprintln(os.Stderr, "Install it manually: npm install -g @google/gemini-cli")
+			os.Exit(1)
 		}
-		os.Exit(1)
+		geminiPath, err = exec.LookPath("gemini")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Gemini CLI still not found after install.")
+			os.Exit(1)
+		}
 	}
+
+	// 2. Gemini CLI has no standalone auth command — auth happens inside the
+	//    interactive REPL.  Instruct the user to authenticate in a separate
+	//    terminal session and wait for confirmation.
+	fmt.Fprintln(os.Stderr, "Gemini CLI found at:", geminiPath)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "To authenticate, open a new terminal and run:")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "  gemini")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Complete the login wizard, then type /exit to close Gemini.")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprint(os.Stderr, "Press Enter here when done...")
+	buf := make([]byte, 1)
+	os.Stdin.Read(buf)
 }
 
 // ---------------------------------------------------------------------------
