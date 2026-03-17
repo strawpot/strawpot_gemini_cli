@@ -163,20 +163,20 @@ func cmdBuild(args []string) {
 		os.Exit(1)
 	}
 
-	// Write prompt file (GEMINI.md) into workspace.
-	// Gemini CLI automatically discovers GEMINI.md as context/system instructions.
-	promptFile := filepath.Join(ba.AgentWorkspaceDir, "GEMINI.md")
-	var parts []string
+	// Build combined prompt from role + memory + task.
+	// Gemini CLI only auto-discovers GEMINI.md from cwd ancestors, NOT from
+	// --include-directories.  So we prepend role/memory prompts to the -p arg.
+	var promptParts []string
 	if ba.RolePrompt != "" {
-		parts = append(parts, ba.RolePrompt)
+		promptParts = append(promptParts, ba.RolePrompt)
 	}
 	if ba.MemoryPrompt != "" {
-		parts = append(parts, ba.MemoryPrompt)
+		promptParts = append(promptParts, ba.MemoryPrompt)
 	}
-	if err := os.WriteFile(promptFile, []byte(strings.Join(parts, "\n\n")), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write prompt file: %v\n", err)
-		os.Exit(1)
+	if ba.Task != "" {
+		promptParts = append(promptParts, ba.Task)
 	}
+	combinedPrompt := strings.Join(promptParts, "\n\n")
 
 	// Symlink each subdirectory from each skills-dir into skills/<name>/
 	for _, skillsDir := range ba.SkillsDirs {
@@ -241,8 +241,8 @@ func cmdBuild(args []string) {
 	// Build gemini command
 	cmd := []string{"gemini"}
 
-	if ba.Task != "" {
-		cmd = append(cmd, "-p", ba.Task)
+	if combinedPrompt != "" {
+		cmd = append(cmd, "-p", combinedPrompt)
 	}
 
 	if model, ok := config["model"].(string); ok && model != "" {
@@ -268,9 +268,12 @@ func cmdBuild(args []string) {
 		}
 	}
 
+	// Wrap in sh -c to suppress gemini's stderr noise (e.g. "YOLO mode enabled").
+	shellCmd := shellJoin(cmd) + " 2>/dev/null"
+
 	// Output JSON
 	result := map[string]interface{}{
-		"cmd": cmd,
+		"cmd": []string{"sh", "-c", shellCmd},
 		"cwd": ba.WorkingDir,
 	}
 
@@ -279,4 +282,18 @@ func cmdBuild(args []string) {
 		fmt.Fprintf(os.Stderr, "Failed to encode JSON: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// shellEscape wraps a string in single quotes for sh.
+func shellEscape(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
+// shellJoin quotes and joins args for sh -c.
+func shellJoin(args []string) string {
+	escaped := make([]string, len(args))
+	for i, a := range args {
+		escaped[i] = shellEscape(a)
+	}
+	return strings.Join(escaped, " ")
 }
