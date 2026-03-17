@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,20 +97,24 @@ func TestCmdBuild_MinimalArgs(t *testing.T) {
 		t.Fatal("Missing 'cmd' in output")
 	}
 
-	if len(cmd) < 1 || cmd[0] != "gemini" {
-		t.Errorf("cmd should start with gemini, got %v", cmd[0])
+	// cmd is now ["sh", "-c", "<shell>"]
+	if len(cmd) != 3 || cmd[0] != "sh" || cmd[1] != "-c" {
+		t.Fatalf("cmd should be [sh, -c, <shell>], got %v", cmd)
 	}
-	assertContains(t, cmd, "--include-directories")
-	assertContains(t, cmd, wsDir)
+
+	shell := cmd[2].(string)
+	assertShellContains(t, shell, "'gemini'")
+	assertShellContains(t, shell, "--include-directories")
+	assertShellContains(t, shell, wsDir)
+	assertShellContains(t, shell, "2>/dev/null")
 
 	if result["cwd"] != "/project" {
 		t.Errorf("cwd = %v, want /project", result["cwd"])
 	}
 
-	// Verify GEMINI.md was created
-	promptFile := filepath.Join(wsDir, "GEMINI.md")
-	if _, err := os.Stat(promptFile); err != nil {
-		t.Errorf("GEMINI.md not created: %v", err)
+	// No -p when no task/prompts provided (minimal args)
+	if strings.Contains(shell, "'-p'") {
+		t.Error("shell cmd should NOT contain -p when no task or prompts provided")
 	}
 }
 
@@ -131,12 +136,36 @@ func TestCmdBuild_WithTaskAndModel(t *testing.T) {
 		t.Fatalf("Failed to parse JSON output: %v", err)
 	}
 
-	cmd := result["cmd"].([]interface{})
-	assertSequence(t, cmd, "-p", "fix the bug")
-	assertSequence(t, cmd, "-m", "gemini-2.5-pro")
+	shell := result["cmd"].([]interface{})[2].(string)
+	assertShellContains(t, shell, "'-p' 'fix the bug'")
+	assertShellContains(t, shell, "'-m' 'gemini-2.5-pro'")
 }
 
-func TestCmdBuild_PromptFile(t *testing.T) {
+func TestCmdBuild_PromptsInTask(t *testing.T) {
+	tmpDir := t.TempDir()
+	wsDir := filepath.Join(tmpDir, "workspace")
+
+	args := []string{
+		"--agent-workspace-dir", wsDir,
+		"--role-prompt", "You are a coder",
+		"--memory-prompt", "Use Go",
+		"--task", "fix the bug",
+	}
+
+	output := captureBuildOutput(t, args)
+
+	var result map[string]interface{}
+	json.Unmarshal(output, &result)
+	shell := result["cmd"].([]interface{})[2].(string)
+
+	// Role + memory + task should all be combined in -p
+	assertShellContains(t, shell, "You are a coder")
+	assertShellContains(t, shell, "Use Go")
+	assertShellContains(t, shell, "fix the bug")
+	assertShellContains(t, shell, "'-p'")
+}
+
+func TestCmdBuild_PromptsOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 	wsDir := filepath.Join(tmpDir, "workspace")
 
@@ -146,17 +175,16 @@ func TestCmdBuild_PromptFile(t *testing.T) {
 		"--memory-prompt", "Use Go",
 	}
 
-	captureBuildOutput(t, args)
+	output := captureBuildOutput(t, args)
 
-	content, err := os.ReadFile(filepath.Join(wsDir, "GEMINI.md"))
-	if err != nil {
-		t.Fatalf("Failed to read GEMINI.md: %v", err)
-	}
+	var result map[string]interface{}
+	json.Unmarshal(output, &result)
+	shell := result["cmd"].([]interface{})[2].(string)
 
-	expected := "You are a coder\n\nUse Go"
-	if string(content) != expected {
-		t.Errorf("GEMINI.md = %q, want %q", string(content), expected)
-	}
+	// Role + memory should be in -p even without task
+	assertShellContains(t, shell, "You are a coder")
+	assertShellContains(t, shell, "Use Go")
+	assertShellContains(t, shell, "'-p'")
 }
 
 func TestCmdBuild_SkillsSymlinks(t *testing.T) {
@@ -248,9 +276,8 @@ func TestCmdBuild_SandboxMode(t *testing.T) {
 
 	var result map[string]interface{}
 	json.Unmarshal(output, &result)
-
-	cmd := result["cmd"].([]interface{})
-	assertContains(t, cmd, "--sandbox")
+	shell := result["cmd"].([]interface{})[2].(string)
+	assertShellContains(t, shell, "'--sandbox'")
 }
 
 func TestCmdBuild_Yolo_Default(t *testing.T) {
@@ -265,9 +292,8 @@ func TestCmdBuild_Yolo_Default(t *testing.T) {
 
 	var result map[string]interface{}
 	json.Unmarshal(output, &result)
-
-	cmd := result["cmd"].([]interface{})
-	assertContains(t, cmd, "--yolo")
+	shell := result["cmd"].([]interface{})[2].(string)
+	assertShellContains(t, shell, "'--yolo'")
 }
 
 func TestCmdBuild_Yolo_ExplicitTrue(t *testing.T) {
@@ -283,9 +309,8 @@ func TestCmdBuild_Yolo_ExplicitTrue(t *testing.T) {
 
 	var result map[string]interface{}
 	json.Unmarshal(output, &result)
-
-	cmd := result["cmd"].([]interface{})
-	assertContains(t, cmd, "--yolo")
+	shell := result["cmd"].([]interface{})[2].(string)
+	assertShellContains(t, shell, "'--yolo'")
 }
 
 func TestCmdBuild_Yolo_Disabled(t *testing.T) {
@@ -301,12 +326,9 @@ func TestCmdBuild_Yolo_Disabled(t *testing.T) {
 
 	var result map[string]interface{}
 	json.Unmarshal(output, &result)
-
-	cmd := result["cmd"].([]interface{})
-	for _, v := range cmd {
-		if v == "--yolo" {
-			t.Error("cmd should NOT contain --yolo when disabled")
-		}
+	shell := result["cmd"].([]interface{})[2].(string)
+	if strings.Contains(shell, "--yolo") {
+		t.Error("shell cmd should NOT contain --yolo when disabled")
 	}
 }
 
@@ -335,22 +357,9 @@ func captureBuildOutput(t *testing.T, args []string) []byte {
 	return buf[:n]
 }
 
-func assertContains(t *testing.T, slice []interface{}, val string) {
+func assertShellContains(t *testing.T, shell, substr string) {
 	t.Helper()
-	for _, v := range slice {
-		if v == val {
-			return
-		}
+	if !strings.Contains(shell, substr) {
+		t.Errorf("shell cmd %q does not contain %q", shell, substr)
 	}
-	t.Errorf("cmd %v does not contain %q", slice, val)
-}
-
-func assertSequence(t *testing.T, slice []interface{}, key, val string) {
-	t.Helper()
-	for i, v := range slice {
-		if v == key && i+1 < len(slice) && slice[i+1] == val {
-			return
-		}
-	}
-	t.Errorf("cmd %v does not contain %q %q in sequence", slice, key, val)
 }
